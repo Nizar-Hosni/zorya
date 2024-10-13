@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zorya 3D Globe Prototype</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        canvas { display: block; }
+        #info, .menu, #feature-info, .loading, #about-info {
+            position: absolute;
+            color: white;
+            z-index: 100;
+        }
+        #info { top: 10px; width: 100%; text-align: center; }
+        .menu {
+            bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 20px;
+        }
+        .menu-item {
+            padding: 10px 20px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border: none; color: white; cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .menu-item:hover { background-color: rgba(255, 255, 255, 0.4); }
+        #feature-info, #about-info {
+            top: 50px; right: 20px; width: 250px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 20px; border-radius: 10px;
+            display: none;
+        }
+        .loading {
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Zorya 3D Globe Prototype</div>
+    <div class="menu">
+        <button class="menu-item" data-target="home">Home</button>
+        <button class="menu-item" data-target="features">Features</button>
+        <button class="menu-item" data-target="about">About</button>
+    </div>
+    <div id="feature-info"></div>
+    <div id="about-info">
+        <h3>About Zorya</h3>
+        <p>We're a passionate team of young innovators dedicated to enhancing lives through mindful technology. Zorya is our vision for a more balanced, self-aware world—one app at a time.</p>
+    </div>
+    <div class="loading">Loading... Please wait.</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script>
+        let scene, camera, renderer, globe, phoneModel, planets = [];
+        let currentSection = 'home';
+        let raycaster, mouse;
+        const featuresData = [
+            { name: "Wellness Tracker", description: "Monitor your daily wellness activities and progress." },
+            { name: "Meditation Guide", description: "Access guided meditations for stress relief and mindfulness." },
+            { name: "Sleep Analysis", description: "Track your sleep patterns and get personalized recommendations." }
+        ];
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            createGlobe();
+            createEnhancedPhoneModel();
+            createRealisticSolarSystem();
+            setupLighting();
+            createStarfield();
+
+            camera.position.z = 15;
+
+            window.addEventListener('resize', onWindowResize);
+            document.querySelectorAll('.menu-item').forEach(item => item.addEventListener('click', onMenuClick));
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('click', onMouseClick);
+
+            animate();
+            document.querySelector('.loading').style.display = 'none';
+        }
+
+        function createGlobe() {
+            const globeGeometry = new THREE.SphereGeometry(5, 64, 64);
+            const globeMaterial = new THREE.MeshPhongMaterial({
+                map: new THREE.TextureLoader().load('https://eoimages.gsfc.nasa.gov/images/imagerecords/74000/74393/world.200412.3x21600x10800.jpg'),
+                bumpMap: new THREE.TextureLoader().load('https://eoimages.gsfc.nasa.gov/images/imagerecords/74000/74393/world.200412.3x21600x10800.jpg'),
+                bumpScale: 0.05,
+                specularMap: new THREE.TextureLoader().load('https://eoimages.gsfc.nasa.gov/images/imagerecords/74000/74393/world.200412.3x21600x10800.jpg'),
+                specular: new THREE.Color('grey')
+            });
+            globe = new THREE.Mesh(globeGeometry, globeMaterial);
+            scene.add(globe);
+
+            const atmosphereGeometry = new THREE.SphereGeometry(5.1, 64, 64);
+            const atmosphereMaterial = new THREE.ShaderMaterial({
+                vertexShader: `
+                    varying vec3 vNormal;
+                    void main() {
+                        vNormal = normalize(normalMatrix * normal);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vNormal;
+                    void main() {
+                        float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+                        gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity;
+                    }
+                `,
+                blending: THREE.AdditiveBlending,
+                side: THREE.BackSide
+            });
+            const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+            scene.add(atmosphere);
+        }
+
+        function createEnhancedPhoneModel() {
+            const phoneGeometry = new THREE.BoxGeometry(2.5, 5, 0.2);
+            const phoneMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x000000,
+                specular: 0x111111,
+                shininess: 100
+            });
+            phoneModel = new THREE.Mesh(phoneGeometry, phoneMaterial);
+            phoneModel.position.set(6, 0, 2);
+            phoneModel.rotation.y = -Math.PI / 6;
+            phoneModel.visible = false;
+            scene.add(phoneModel);
+
+            const screenGeometry = new THREE.PlaneGeometry(2.3, 4.8);
+            const screenMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x4287f5,
+                emissive: 0x4287f5,
+                emissiveIntensity: 0.5
+            });
+            const screen = new THREE.Mesh(screenGeometry, screenMaterial);
+            screen.position.z = 0.101;
+            phoneModel.add(screen);
+
+            featuresData.forEach((feature, index) => {
+                const appIconGeometry = new THREE.PlaneGeometry(0.4, 0.4);
+                const appIconMaterial = new THREE.MeshBasicMaterial({ 
+                    map: createAppIcon(feature.name)
+                });
+                const appIcon = new THREE.Mesh(appIconGeometry, appIconMaterial);
+                appIcon.position.set(
+                    (index % 3 - 1) * 0.6,
+                    1 - Math.floor(index / 3) * 0.6,
+                    0.11
+                );
+                appIcon.userData = { featureIndex: index };
+                phoneModel.add(appIcon);
+            });
+        }
+
+        function createAppIcon(name) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+
+            // Background
+            ctx.fillStyle = getColorForApp(name);
+            ctx.fillRect(0, 0, 128, 128);
+
+            // Icon
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 48px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(getIconForApp(name), 64, 64);
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function getColorForApp(name) {
+            switch(name) {
+                case 'Wellness Tracker': return '#4CAF50';
+                case 'Meditation Guide': return '#2196F3';
+                case 'Sleep Analysis': return '#9C27B0';
+                default: return '#FFA000';
+            }
+        }
+
+        function getIconForApp(name) {
+            switch(name) {
+                case 'Wellness Tracker': return '❤️';
+                case 'Meditation Guide': return '🧘';
+                case 'Sleep Analysis': return '💤';
+                default: return '📱';
+            }
+        }
+
+        function createRealisticSolarSystem() {
+            const planetData = [
+                { name: 'Mercury', size: 0.0916, distance: 10, color: 0x8c7e6d },
+                { name: 'Venus', size: 0.2275, distance: 12, color: 0xe6c8a0 },
+                { name: 'Mars', size: 0.1143, distance: 16, color: 0xc1440e },
+                { name: 'Moon', size: 0.0586, distance: 7, color: 0xf0f0f0 }
+            ];
+
+            planetData.forEach(data => {
+                const planetGeometry = new THREE.SphereGeometry(data.size, 32, 32);
+                const planetMaterial = new THREE.MeshPhongMaterial({ color: data.color });
+                const planet = new THREE.Mesh(planetGeometry, planetMaterial);
+                planet.position.set(data.distance, 0, 0);
+                planets.push(planet);
+                scene.add(planet);
+            });
+        }
+
+        function createStarfield() {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            for (let i = 0; i < 10000; i++) {
+                vertices.push(
+                    Math.random() * 2000 - 1000,
+                    Math.random() * 2000 - 1000,
+                    Math.random() * 2000 - 1000
+                );
+            }
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            const material = new THREE.PointsMaterial({ color: 0xFFFFFF, size: 0.5 });
+            const stars = new THREE.Points(geometry, material);
+            scene.add(stars);
+        }
+
+        function setupLighting() {
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(5, 3, 5);
+            scene.add(directionalLight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            globe.rotation.y += 0.001;
+
+            planets.forEach((planet, index) => {
+                const angle = Date.now() * 0.0005 * (index + 1) * 0.1;
+                planet.position.x = Math.cos(angle) * planet.position.length();
+                planet.position.z = Math.sin(angle) * planet.position.length();
+            });
+
+            if (phoneModel.visible) {
+                phoneModel.rotation.y = -Math.PI / 6 + Math.sin(Date.now() * 0.001) * 0.1;
+            }
+
+            TWEEN.update();
+            renderer.render(scene, camera);
+        }
+
+        // ... (rest of the functions remain the same)
+
+        init();
+    </script>
+</body>
+</html>
